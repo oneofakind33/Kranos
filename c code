@@ -1,0 +1,177 @@
+#define DATABASE_URL "https://geo-fencing-b1ebb-default-rtdb.firebaseio.com/"
+//<databaseName>.firebaseio.com or
+<databaseName>.<region>.firebasedatabase.app
+/* 4. Define the user Email and password that alreadey registerd or added in your
+project */
+#define USER_EMAIL "smarthelemt@gmail.com"
+#define USER_PASSWORD "SMARThelmet2"
+//Define Firebase Data object
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+#include <TinyGPS++.h>
+#include <Arduino.h>
+unsigned long sendDataPrevMillis = 0;
+unsigned long count = 0;
+String Irri;
+float lat1 = 13.055698172235662;
+float lon1 = 80.22665017031233;
+//float lat1 = 13.032546333;
+//float lon1 = 80.209824833;
+int Buzzer = 2;
+volatile float minutes, seconds;
+volatile int degree, secs, mins;
+int gas, xaxis, yaxis, zaxis;
+float fenceRadius = 300;
+//=300
+TinyGPSPlus gps;
+int x_adc_value, y_adc_value, z_adc_value;
+#define X_PIN 36 // Define the pin for X-axis accelerometer
+#define Y_PIN 39 // Define the pin for Y-axis accelerometer
+#define Z_PIN 34 // Define the pin for Z-axis accelerometer
+int ir = 4;
+int v = 15;
+void setup()
+{
+Serial.begin(9600);
+WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+Serial.print(" to Wi-Fi");
+while (WiFi.status() != WL_CONNECTED)
+{
+Serial.print(".");
+delay(300);
+}
+Serial.println();
+Serial.print("Connected with IP: ");
+Serial.println(WiFi.localIP());
+Serial.println();
+Serial.printf("Firebase Client v%s\n\n", FIREBASE_CLIENT_VERSION);
+/* Assign the api key (required) */
+config.api_key = API_KEY;
+/* Assign the user sign in credentials */
+auth.user.email = USER_EMAIL;
+auth.user.password = USER_PASSWORD;
+/* Assign the RTDB URL (required) */
+config.database_url = DATABASE_URL;
+/* Assign the callback function for the long running token generation task */
+config.token_status_callback = tokenStatusCallback; //see addons/TokenHelper.h
+Firebase.begin(&config, &auth);
+//Comment or pass false value when WiFi reconnection will control by your code or
+third party library
+Firebase.reconnectWiFi(true);
+Firebase.setDoubleDigits(5);
+pinMode(Buzzer, OUTPUT);
+pinMode(ir, INPUT);
+pinMode(v, INPUT);
+digitalWrite(Buzzer, LOW);
+}
+void loop()
+{ int h = digitalRead(ir);
+int vib = digitalRead(v);
+x_adc_value = analogRead(X_PIN);
+y_adc_value = analogRead(Y_PIN);
+z_adc_value = analogRead(Z_PIN);
+if (h == 0) {
+Serial.println("H");
+digitalWrite(Buzzer, HIGH);
+delay(200);
+digitalWrite(Buzzer, LOW);
+delay(200);
+digitalWrite(Buzzer, HIGH);
+Firebase.setString(fbdo, "Smart_Helmet/Helmet_Status", "Helmet is not weared");
+delay(2000);
+}
+else {
+digitalWrite(Buzzer, LOW);
+Firebase.setString(fbdo, "Smart_Helmet/Accident_Status", "Helmet is weared");
+}
+// Serial.println(x_adc_value);
+// Serial.println(sendvalues);
+if (x_adc_value > 2000 || vib == 0) {
+Serial.println("A");
+digitalWrite(Buzzer, HIGH);
+delay(200);
+digitalWrite(Buzzer, LOW);
+delay(200);
+digitalWrite(Buzzer, HIGH);
+Firebase.setString(fbdo, "Smart_Helmet/Accident_Status", "Accident is Detected");
+delay(2000);
+}
+else {
+Serial.println("B");
+digitalWrite(Buzzer, LOW);
+Firebase.setString(fbdo, "Smart_Helmet/Accident_Status", "No Accident is
+Detected");
+}
+// Serial.println(abs(y_adc_value));
+smartDelay(1000);
+unsigned long start;
+double lat_val, lng_val, alt_m_val;
+bool loc_valid, alt_valid;
+lat_val = gps.location.lat();
+loc_valid = gps.location.isValid();
+lng_val = gps.location.lng();
+alt_m_val = gps.altitude.meters();
+alt_valid = gps.altitude.isValid();
+if (!loc_valid)
+{
+}
+else
+{
+String sendvalues = (String(lat_val, 6) + ',' + String(lng_val, 6));
+Serial.println(sendvalues);
+delay(1000);
+}
+Firebase.setString(fbdo, "Smart_Helmet/Latitude", lat_val);
+Firebase.setString(fbdo, "Smart_Helmet/Longitude", lng_val);
+bool withinGeofence = isInGeofence(lat_val, lng_val, lat1, lon1, fenceRadius);
+if (withinGeofence) {
+digitalWrite(Buzzer, LOW);
+Firebase.setString(fbdo, "Smart_Helmet/Location_Status", "Inside the Border");
+} else {
+digitalWrite(Buzzer, HIGH);
+delay(200);
+digitalWrite(Buzzer, LOW);
+delay(200);
+digitalWrite(Buzzer, HIGH);
+Firebase.setString(fbdo, "Smart_Helmet/Location_Status", "Out of the Border");
+}
+delay(3000);
+}
+static void smartDelay(unsigned long ms)
+{
+unsigned long start = millis();
+do
+{
+while (Serial.available())
+gps.encode(Serial.read());
+} while (millis() - start < ms);
+}
+void DegMinSec( double tot_val)
+{
+degree = (int)tot_val;
+minutes = tot_val - degree;
+seconds = 60 * minutes;
+minutes = (int)seconds;
+mins = (int)minutes;
+seconds = seconds - minutes;
+seconds = 60 * seconds;
+secs = (int)seconds;
+}
+bool isInGeofence(double lat_val, double lng_val, double lat1, double lon1, int
+fenceRadius) {
+// Calculate distance using Haversine formula
+double dLat = radians(lat1 - lat_val);
+double dLon = radians(lon1 - lng_val);
+double a = sin(dLat / 2) * sin(dLat / 2) + cos(radians(lat_val)) * cos(radians(lat1)) *
+sin(dLon / 2) * sin(dLon / 2);
+double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+double distance = 6371000 * c; // Radius of Earth in meters
+Serial.println(distance);
+// Check if distance is within the radius
+if (distance <= fenceRadius) {
+return true;
+} else {
+return false;
+}
+}
